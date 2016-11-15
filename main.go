@@ -2,13 +2,15 @@ package main
 
 import (
 	"fmt"
-	"image/png"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"os/user"
+	"runtime"
+
+	"github.com/fogleman/primitive/primitive"
 )
 
 const (
@@ -17,8 +19,15 @@ const (
 	backgroundImg string = "background.png"
 )
 
+type shapeConfig struct {
+	Count  int
+	Mode   int
+	Alpha  int
+	Repeat int
+}
+
 func main() {
-	width, height := getScreenResolution()
+	_, height := getScreenResolution()
 	res, err := http.Get(url)
 
 	defer res.Body.Close()
@@ -40,7 +49,7 @@ func main() {
 	defer response.Body.Close()
 
 	usr, err := user.Current()
-	err = os.Mkdir(fmt.Sprint(usr.HomeDir, "/.tapet"), 0777)
+	err = os.Mkdir(fmt.Sprint(usr.HomeDir, "/.tapet2"), 0777)
 	if err != nil {
 		if !os.IsExist(err) {
 			println("dir NOPE")
@@ -48,7 +57,7 @@ func main() {
 		}
 	}
 
-	file, err := os.Create(fmt.Sprint(usr.HomeDir, "/.tapet/", tmpImg))
+	file, err := os.Create(fmt.Sprint(usr.HomeDir, "/.tapet2/", tmpImg))
 	if err != nil {
 		println("file NOPE")
 		log.Fatal(err)
@@ -60,21 +69,29 @@ func main() {
 	}
 	file.Close()
 
-	colors, err := colorsFromImage(fmt.Sprint(usr.HomeDir, "/.tapet/", tmpImg))
+	input, err := primitive.LoadImage(fmt.Sprint(usr.HomeDir, "/.tapet2/", tmpImg))
 
-	if len(colors) > 16 {
-		colors = colors[:16]
-	} else if len(colors) < 16 {
-		log.Fatal("Less than 16 colors. Aborting.")
+	Configs := make([]shapeConfig, 0)
+	//configCount := randMinMax(50, 200)
+	mode := randMinMax(0, 5)
+
+	for i := 0; i < 20; i++ {
+		Configs = append(Configs, shapeConfig{i, mode, 128, 0})
 	}
 
-	file, err = os.OpenFile(fmt.Sprint(usr.HomeDir, "/.tapet/", backgroundImg), os.O_CREATE|os.O_WRONLY, 0666)
-	if err != nil {
-		log.Fatal(err)
+	bg := primitive.MakeColor(primitive.AverageImageColor(input))
+
+	// run primitive algorithm
+	model := primitive.NewModel(input, bg, height, runtime.NumCPU())
+	for j, config := range Configs {
+		for i := 0; i < config.Count; i++ {
+			model.Step(primitive.ShapeType(config.Mode), config.Alpha, config.Repeat)
+			last := j == len(Configs)-1 && i == config.Count-1
+			if last {
+				primitive.SavePNG(fmt.Sprint(usr.HomeDir, "/.tapet2/", backgroundImg), model.Context.Image())
+			}
+		}
 	}
 
-	img := randomImage(colors, width, height)
-	png.Encode(file, img)
-	file.Close()
-	changeDesktopBackground(fmt.Sprint(usr.HomeDir, "/.tapet/", backgroundImg))
+	changeDesktopBackground(fmt.Sprint(usr.HomeDir, "/.tapet2/", backgroundImg))
 }
